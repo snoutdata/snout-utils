@@ -1,0 +1,8 @@
+# Only for pgrx's build and test tooling. snout_utils is a preloaded library with no SQL objects:
+# the pod image ships its .so and never this file, so it is not in pg_available_extensions.
+comment = 'snout_utils: delegated superuser operations for a database owner'
+default_version = '@CARGO_VERSION@'
+module_pathname = 'snout_utils'
+relocatable = false
+superuser = true
+trusted = false
