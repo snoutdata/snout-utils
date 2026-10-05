@@ -426,9 +426,10 @@ unsafe fn alter_role_set_plan(stmt: *mut pg_sys::AlterRoleSetStmt) -> Plan {
 			return Plan::Pass;
 		}
 		// Never on a superuser: a delegated setting there changes how OUR sessions behave
-		// (session_replication_role = replica turns off every trigger they fire).
+		// (session_replication_role = replica turns off every trigger they fire). Nor on any other
+		// role the privileged role does not administer: those are the platform's.
 		let target = pg_sys::get_rolespec_oid((*stmt).role, false);
-		delegate_if(!pg_sys::superuser_arg(target))
+		delegate_if(!pg_sys::superuser_arg(target) && administers(target))
 	}
 }
 
@@ -445,7 +446,9 @@ unsafe fn alter_role_plan(stmt: *mut pg_sys::AlterRoleStmt) -> Plan {
 				Some("Only superusers can alter privileged roles."),
 			));
 		}
-		for option in list::pointers::<pg_sys::DefElem>((*stmt).options) {
+		let options: Vec<*mut pg_sys::DefElem> =
+			list::pointers::<pg_sys::DefElem>((*stmt).options).collect();
+		for &option in &options {
 			if CStr::from_ptr((*option).defname).to_bytes() == b"superuser" {
 				return Plan::Refuse(refusal(
 					PgSqlErrorCode::ERRCODE_INSUFFICIENT_PRIVILEGE,
@@ -456,10 +459,57 @@ unsafe fn alter_role_plan(stmt: *mut pg_sys::AlterRoleStmt) -> Plan {
 				));
 			}
 		}
-		// Any other role, the platform's own included: the pod's bootstrap runs as the owner and
-		// sets LOGIN, CREATEROLE and REPLICATION on the service roles this way.
-		as_superuser_then(Then::Nothing)
+		// A role the privileged role administers (one it created, or was given ADMIN on), or one of
+		// the API stack's service roles with only the attributes its bootstrap sets: that runs as
+		// the owner and sets LOGIN, CREATEROLE, BYPASSRLS and REPLICATION on them this way, on pods
+		// where some of them were made by our superuser. Anything else is the platform's, and
+		// Postgres decides it as it would without us: it refuses a role the caller does not
+		// administer.
+		let name = CStr::from_ptr(pg_sys::GetUserNameFromId(target, false));
+		let defnames: Vec<&CStr> = options
+			.iter()
+			.map(|&option| CStr::from_ptr((*option).defname))
+			.collect();
+		delegate_if(administers(target) || is_service_role_change(name, &defnames))
 	}
+}
+
+/// Whether the privileged role holds ADMIN on `role`, directly or through a role it is a member of.
+fn administers(role: pg_sys::Oid) -> bool {
+	let privileged = privileged_role_oid();
+	privileged != pg_sys::Oid::INVALID && unsafe { pg_sys::is_admin_of_role(privileged, role) }
+}
+
+/// The API stack's service roles, and the attributes (as `ALTER ROLE` names them in its parse tree)
+/// the stack's bootstrap sets on each over the owner's connection.
+const SERVICE_ROLES: &[(&str, &[&str])] = &[
+	("anon", &["canlogin", "inherit"]),
+	("authenticated", &["canlogin", "inherit"]),
+	("service_role", &["canlogin", "inherit", "bypassrls"]),
+	("authenticator", &["canlogin", "inherit"]),
+	("snout_auth_admin", &["canlogin", "inherit", "createrole"]),
+	(
+		"snout_realtime_admin",
+		&["canlogin", "inherit", "createrole", "isreplication"],
+	),
+	(
+		"snout_storage_admin",
+		&["canlogin", "inherit", "createrole"],
+	),
+];
+
+/// Whether an `ALTER ROLE` of `role` setting `options` is one the bootstrap makes: a service role,
+/// and nothing but that role's attributes (no password, no connection limit, no expiry).
+fn is_service_role_change(role: &CStr, options: &[&CStr]) -> bool {
+	SERVICE_ROLES
+		.iter()
+		.find(|(name, _)| name.as_bytes() == role.to_bytes())
+		.is_some_and(|(_, allowed)| {
+			!options.is_empty()
+				&& options
+					.iter()
+					.all(|option| allowed.iter().any(|a| a.as_bytes() == option.to_bytes()))
+		})
 }
 
 unsafe fn create_role_plan(stmt: *mut pg_sys::CreateRoleStmt) -> Plan {
@@ -553,5 +603,45 @@ pub fn refusal(code: PgSqlErrorCode, message: &str, detail: Option<&str>) -> Ref
 		message: extension::in_postgres(message),
 		detail: detail.map_or(std::ptr::null(), extension::in_postgres),
 		hint: std::ptr::null(),
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::is_service_role_change;
+
+	#[test]
+	fn the_bootstrap_s_service_role_changes_are_delegated() {
+		assert!(is_service_role_change(c"anon", &[c"canlogin", c"inherit"]));
+		assert!(is_service_role_change(c"service_role", &[c"bypassrls"]));
+		assert!(is_service_role_change(
+			c"snout_realtime_admin",
+			&[c"isreplication"]
+		));
+		assert!(is_service_role_change(
+			c"snout_auth_admin",
+			&[c"canlogin", c"inherit", c"createrole"]
+		));
+	}
+
+	#[test]
+	fn nothing_else_on_a_service_role_and_no_other_role() {
+		assert!(!is_service_role_change(c"authenticator", &[c"password"]));
+		assert!(!is_service_role_change(c"anon", &[c"bypassrls"]));
+		assert!(!is_service_role_change(
+			c"authenticator",
+			&[c"isreplication"]
+		));
+		assert!(!is_service_role_change(
+			c"snout_realtime_admin",
+			&[c"connectionlimit"]
+		));
+		assert!(!is_service_role_change(
+			c"snout_storage_admin",
+			&[c"canlogin", c"validUntil"]
+		));
+		assert!(!is_service_role_change(c"snout_storage_admin", &[]));
+		assert!(!is_service_role_change(c"reporting", &[c"canlogin"]));
+		assert!(!is_service_role_change(c"snoutpod_oauth", &[c"canlogin"]));
 	}
 }
