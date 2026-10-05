@@ -1,5 +1,5 @@
 //! Lists of names, as the settings hold them. Pure: no Postgres, no `unsafe`, so it is tested with
-//! plain `#[test]`s and fuzzed (fuzz/).
+//! plain `#[test]`s and fuzzed.
 #![forbid(unsafe_code)]
 
 /// Postgres's own limit on an identifier, in bytes, less its terminator (NAMEDATALEN - 1).

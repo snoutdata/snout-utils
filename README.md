@@ -103,8 +103,8 @@ bash scripts/build-dist.sh tools 17 && bash scripts/build-dist.sh build 17 /out 
 
 `build-dist.sh` is the one recipe for a build that ships: it expects Debian bookworm, installs the
 Postgres server headers, and writes `/out/lib/snout_utils.so` (stripped) and its symbols to
-`/out/debug`. The parsers of untrusted text (the list settings, the script substitution) are fuzzed
-by the stack's `scripts/fuzz.sh` (`utils_names`, `utils_script`).
+`/out/debug`. The parsers of untrusted text (the list settings, the script substitution) are fuzzed:
+a libFuzzer target feeds each of them arbitrary bytes.
 
 ## Operations
 

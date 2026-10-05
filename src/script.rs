@@ -1,5 +1,5 @@
 //! The text of an extension's custom script, with its four variables filled in. Pure: no Postgres,
-//! no `unsafe`, tested with plain `#[test]`s and fuzzed (fuzz/).
+//! no `unsafe`, tested with plain `#[test]`s and fuzzed.
 //!
 //! A custom script runs as the superuser, and three of the four values come from the statement a
 //! non-superuser typed, so this is the one place in the crate where a string from a customer is put
