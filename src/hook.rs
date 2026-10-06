@@ -483,10 +483,10 @@ fn administers(role: pg_sys::Oid) -> bool {
 /// The API stack's service roles, and the attributes (as `ALTER ROLE` names them in its parse tree)
 /// the stack's bootstrap sets on each over the owner's connection.
 const SERVICE_ROLES: &[(&str, &[&str])] = &[
-	("snout_app", &["canlogin", "inherit"]),
-	("snout_member", &["canlogin", "inherit"]),
-	("snout_server", &["canlogin", "inherit", "bypassrls"]),
-	("snout_gate", &["canlogin", "inherit"]),
+	("anon", &["canlogin", "inherit"]),
+	("authenticated", &["canlogin", "inherit"]),
+	("service_role", &["canlogin", "inherit", "bypassrls"]),
+	("authenticator", &["canlogin", "inherit"]),
 	("snout_auth_admin", &["canlogin", "inherit", "createrole"]),
 	(
 		"snout_realtime_admin",
@@ -612,8 +612,8 @@ mod tests {
 
 	#[test]
 	fn the_bootstrap_s_service_role_changes_are_delegated() {
-		assert!(is_service_role_change(c"snout_app", &[c"canlogin", c"inherit"]));
-		assert!(is_service_role_change(c"snout_server", &[c"bypassrls"]));
+		assert!(is_service_role_change(c"anon", &[c"canlogin", c"inherit"]));
+		assert!(is_service_role_change(c"service_role", &[c"bypassrls"]));
 		assert!(is_service_role_change(
 			c"snout_realtime_admin",
 			&[c"isreplication"]
@@ -626,10 +626,10 @@ mod tests {
 
 	#[test]
 	fn nothing_else_on_a_service_role_and_no_other_role() {
-		assert!(!is_service_role_change(c"snout_gate", &[c"password"]));
-		assert!(!is_service_role_change(c"snout_app", &[c"bypassrls"]));
+		assert!(!is_service_role_change(c"authenticator", &[c"password"]));
+		assert!(!is_service_role_change(c"anon", &[c"bypassrls"]));
 		assert!(!is_service_role_change(
-			c"snout_gate",
+			c"authenticator",
 			&[c"isreplication"]
 		));
 		assert!(!is_service_role_change(
