@@ -481,12 +481,17 @@ fn administers(role: pg_sys::Oid) -> bool {
 }
 
 /// The API stack's service roles, and the attributes (as `ALTER ROLE` names them in its parse tree)
-/// the stack's bootstrap sets on each over the owner's connection.
+/// the stack's bootstrap sets on each over the owner's connection. The four API roles under both
+/// layouts' names (the own layout): a renamed project keeps the old ones as aliases.
 const SERVICE_ROLES: &[(&str, &[&str])] = &[
 	("anon", &["canlogin", "inherit"]),
 	("authenticated", &["canlogin", "inherit"]),
 	("service_role", &["canlogin", "inherit", "bypassrls"]),
 	("authenticator", &["canlogin", "inherit"]),
+	("snout_app", &["canlogin", "inherit"]),
+	("snout_member", &["canlogin", "inherit"]),
+	("snout_server", &["canlogin", "inherit", "bypassrls"]),
+	("snout_gate", &["canlogin", "inherit"]),
 	("snout_auth_admin", &["canlogin", "inherit", "createrole"]),
 	(
 		"snout_realtime_admin",
@@ -622,6 +627,36 @@ mod tests {
 			c"snout_auth_admin",
 			&[c"canlogin", c"inherit", c"createrole"]
 		));
+	}
+
+	#[test]
+	fn the_new_layout_s_service_roles_are_delegated_the_same() {
+		for (old, new) in [
+			(c"anon", c"snout_app"),
+			(c"authenticated", c"snout_member"),
+			(c"service_role", c"snout_server"),
+			(c"authenticator", c"snout_gate"),
+		] {
+			for options in [
+				&[c"canlogin"][..],
+				&[c"inherit"][..],
+				&[c"canlogin", c"inherit"][..],
+				&[c"bypassrls"][..],
+				&[c"password"][..],
+				&[c"createrole"][..],
+				&[][..],
+			] {
+				assert_eq!(
+					is_service_role_change(new, options),
+					is_service_role_change(old, options),
+					"{new:?} {options:?}"
+				);
+			}
+		}
+		assert!(is_service_role_change(c"snout_server", &[c"bypassrls"]));
+		assert!(!is_service_role_change(c"snout_app", &[c"bypassrls"]));
+		assert!(!is_service_role_change(c"snout_gate", &[c"password"]));
+		assert!(!is_service_role_change(c"snout_apps", &[c"canlogin"]));
 	}
 
 	#[test]
