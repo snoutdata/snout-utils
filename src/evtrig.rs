@@ -77,7 +77,7 @@ pub unsafe fn create_plan(stmt: *mut pg_sys::CreateEventTrigStmt) -> Result<bool
 unsafe fn attributes(function: pg_sys::Oid) -> (pg_sys::Oid, bool) {
 	unsafe {
 		let tuple = pg_sys::SearchSysCache1(
-			pg_sys::SysCacheIdentifier::PROCOID as i32,
+			pg_sys::SysCacheIdentifier::PROCOID as _,
 			pg_sys::Datum::from(function),
 		);
 		if tuple.is_null() {

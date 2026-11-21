@@ -91,7 +91,7 @@ snout_utils.privileged_role_allowed_configs = 'session_replication_role,pgaudit.
 
 ## Building and testing
 
-Postgres 17. Everything runs in the crate's own container (`container/Containerfile`: Rust,
+Postgres 17, 18 and 19. Everything runs in the crate's own container (`container/Containerfile`: Rust,
 cargo-pgrx and a Postgres built with assertions), so nothing depends on the machine it runs from.
 
 ```sh
